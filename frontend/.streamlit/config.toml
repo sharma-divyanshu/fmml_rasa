@@ -1,0 +1,7 @@
+[theme]
+base="light"
+primaryColor="#E91E63"                     # Pink Primary Color
+backgroundColor="#FFF0F5"                  # Lavender Blush (Very Soft Pink Background)
+secondaryBackgroundColor="#FFE4EC"         # Light Pink Panel Background
+textColor="#4B0082"                        # Dark Purple Text for Good Contrast
+font="sans serif"
