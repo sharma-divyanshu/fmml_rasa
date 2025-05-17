@@ -1,0 +1,65 @@
+/* General Page Styling */
+html, body, [class*="css"] {
+    font-family: 'Helvetica Neue', sans-serif;
+    background-color: #0e1117;
+    color: #ffffff;
+}
+
+/* Title Styling */
+h1, h2, h3 {
+    color: #f5f5f5;
+    font-weight: 800;
+}
+
+/* Button Styling */
+button[kind="primary"] {
+    background-color: #e75480;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: bold;
+}
+
+button[kind="primary"]:hover {
+    background-color: #ff6f91;
+}
+
+/* Success Message Styling */
+.stAlert {
+    background-color: #1e2b18 !important;
+    color: #b9fbc0 !important;
+    border-left: 5px solid #57cc99 !important;
+}
+
+/* Info Message Styling */
+.stAlert[data-testid="stInfo"] {
+    background-color: #1e1e30 !important;
+    color: #91a7ff !important;
+    border-left: 5px solid #748ffc !important;
+}
+
+/* Audio Player Styling */
+audio {
+    width: 100% !important;
+    margin-top: 10px;
+}
+
+/* Radio and Checkbox Styling */
+.stRadio, .stCheckbox {
+    margin-bottom: 1rem !important;
+}
+
+/* Inputs and Text Areas */
+input, textarea {
+    border-radius: 5px !important;
+    padding: 0.5rem !important;
+    border: 1px solid #555 !important;
+    background-color: #1a1a1a !important;
+    color: #ffffff !important;
+}
+
+/* Container Padding */
+.stApp {
+    padding: 2rem !important;
+}
