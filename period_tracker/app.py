@@ -8,10 +8,48 @@ from period_tracker.config.settings import config
 from period_tracker.utils.audio_recorder import record_audio_until_x
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
 from period_tracker.utils.voice_conversation_handler import VoiceConversationHandler
+from period_tracker.utils.data_store import PeriodDataStore
 
 class PeriodTracker:
-    def __init__(self, user_id: str = "default_user"):
-        self.user_id = user_id
+    def __init__(self):
+        """Initialize the period tracker with session management"""
+        # Initialize data store
+        self.data_store = PeriodDataStore()
+        # Initialize conversation handler
+        self.conversation_handler = VoiceConversationHandler()
+        # Initialize current session
+        self.current_session_id = None
+        
+    def start_new_session(self) -> Dict:
+        """Start a new session for a new interaction"""
+        self.current_session_id = self.data_store.create_session()
+        return {
+            "session_id": self.current_session_id,
+            "status": "active",
+            "start_time": self.data_store.get_session_data(self.current_session_id)["start_time"]
+        }
+        
+    def end_current_session(self) -> Dict:
+        """End the current session and return session data"""
+        if not self.current_session_id:
+            return {"error": "No active session"}
+            
+        # End the session
+        self.data_store.end_session(self.current_session_id)
+        
+        # Get session data
+        session_data = self.data_store.get_session_data(self.current_session_id)
+        
+        # Clear current session
+        self.current_session_id = None
+        
+        return {
+            "session_id": self.current_session_id,
+            "status": "completed",
+            "end_time": session_data["end_time"],
+            "has_missing_data": session_data["has_missing_data"],
+            "has_unusual_symptoms": session_data["has_unusual_symptoms"]
+        }
 
     def generate_voice_response(self, text: str) -> Dict[str, Any]:
         """
@@ -44,24 +82,36 @@ class PeriodTracker:
         except Exception as e:
             return {"error": f"Failed to generate voice response: {str(e)}"}
     
-    def process_voice_note(self, audio_file_path: str) -> Dict[str, Any]:
+    def process_voice_note(self, audio_file_path: str, session_id: str = None) -> Dict[str, Any]:
         """
         Process a voice note using conversation flow to gather complete health information
         
         Args:
             audio_file_path: Path to the audio file
+            session_id: Optional session ID to use for this interaction
             
         Returns:
             Dict containing the extracted information and metadata
         """
+        # Check if we have an active session
+        if not session_id and not self.current_session_id:
+            return {"error": "No active session. Please start a new session first."}
+            
+        # Use provided session ID or current session
+        if session_id:
+            self.current_session_id = session_id
+            
         # Transcribe the audio
         try:
             transcribed_text = ElevenLabsTranscriber().transcribe_audio(audio_file_path)
         except Exception as e:
             return {"error": f"Failed to transcribe audio: {str(e)}"}
         
-        # Extract period information
-        period_info = extract_period_info(transcribed_text)
+        # Process conversation to gather complete information
+        try:
+            complete_info = self.conversation_handler.process_conversation(transcribed_text)
+        except Exception as e:
+            return {"error": f"Failed to process conversation: {str(e)}"}
         
         # Save to database
         log_id = str(uuid.uuid4())
@@ -72,19 +122,23 @@ class PeriodTracker:
         os.makedirs(os.path.dirname(audio_path), exist_ok=True)
         os.rename(audio_file_path, audio_path)
         
-        # Create log entry
-        log_entry = PeriodLog(
-            id=log_id,
-            user_id=self.user_id,
-            date=datetime.utcnow(),
-            flow=period_info.get("flow"),
-            spotting=period_info.get("spotting", False),
-            mood=period_info.get("mood", []),
-            symptoms=period_info.get("symptoms", []),
-            notes=period_info.get("notes"),
-            voice_note_path=audio_path,
-            transcribed_text=transcribed_text
-        )
+        # Add log to session history
+        self.data_store.add_log_to_history(complete_info)
+        
+        # Get session data
+        session_data = self.data_store.get_session_data(self.current_session_id)
+        
+        return {
+            "log_id": log_id,
+            "session_id": self.current_session_id,
+            "transcribed_text": transcribed_text,
+            "complete_info": complete_info,
+            "summary": format_period_summary(complete_info),
+            "conversation_history": self.conversation_handler.conversation_history,
+            "session_status": session_data["status"],
+            "has_missing_data": session_data["has_missing_data"],
+            "has_unusual_symptoms": session_data["has_unusual_symptoms"]
+        }
         
         return {
             "log_id": log_id,

@@ -1,6 +1,13 @@
 import streamlit as st
 import os
 from datetime import datetime as dt
+from period_tracker.app import PeriodTracker
+from period_tracker.utils.audio_recorder import record_audio_until_x
+import tempfile
+import uuid
+
+# Initialize period tracker
+period_tracker = PeriodTracker()
 
 # --- Page Config ---
 st.set_page_config(page_title="RASA: Wellness that Listens", page_icon="🩸", layout="centered")
@@ -92,13 +99,70 @@ elif st.session_state.step == 9:
 
 # --- Step 10: Voice-Based Tracker ---
 elif st.session_state.step == 10:
+    # Initialize session if not already done
+    if "session_id" not in st.session_state:
+        session_response = period_tracker.start_new_session()
+        st.session_state.session_id = session_response["session_id"]
+        st.session_state.session_status = "active"
+        st.session_state.logs = []
+        
     st.title("🎙️ Voice-Based Period Health Tracker")
     st.write("Speak and submit below. Your voice and logs will be saved for review.")
-
-    audio_bytes = st.audio_input("Record your voice")
-
-    if audio_bytes:
-        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Show session status
+    st.write(f"Session ID: {st.session_state.session_id}")
+    if st.session_state.session_status == "active":
+        st.write("Status: Active")
+    else:
+        st.write("Status: Completed")
+    
+    # Record audio
+    if st.button("Start Recording"):
+        # Create temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+        temp_file.close()
+        
+        # Record audio
+        record_audio_until_x(temp_file.name)
+        
+        # Process the voice note
+        result = period_tracker.process_voice_note(temp_file.name, st.session_state.session_id)
+        
+        if "error" in result:
+            st.error(result["error"])
+        else:
+            # Store the log
+            st.session_state.logs.append(result)
+            
+            # Show summary
+            st.success(result["summary"])
+            
+            # Show conversation history
+            st.subheader("Conversation History")
+            for msg in result["conversation_history"]:
+                role = "User" if msg["role"] == "user" else "Assistant"
+                st.write(f"**{role}:** {msg["content"]}")
+                
+            # Show warnings if any
+            if result["has_missing_data"]:
+                st.warning("Some required information is missing. Please provide more details.")
+            if result["has_unusual_symptoms"]:
+                st.warning("Unusual symptoms detected. Please consider consulting a healthcare professional.")
+                
+    # End session button
+    if st.button("End Session"):
+        end_result = period_tracker.end_current_session()
+        st.session_state.session_status = "completed"
+        st.success("Session ended successfully")
+        
+    # Show session statistics
+    st.subheader("Session Statistics")
+    if st.session_state.logs:
+        st.write(f"Total logs: {len(st.session_state.logs)}")
+        missing_data = sum(1 for log in st.session_state.logs if log["has_missing_data"])
+        unusual_symptoms = sum(1 for log in st.session_state.logs if log["has_unusual_symptoms"])
+        st.write(f"Logs with missing data: {missing_data}")
+        st.write(f"Logs with unusual symptoms: {unusual_symptoms}")
         save_dir = "recordings"
         os.makedirs(save_dir, exist_ok=True)
         file_path = f"{save_dir}/{st.session_state.user_profile.get('name', 'user')}_{timestamp}.wav"
