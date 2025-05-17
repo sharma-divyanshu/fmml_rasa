@@ -163,7 +163,7 @@ elif st.session_state.step == 10:
         unusual_symptoms = sum(1 for log in st.session_state.logs if log["has_unusual_symptoms"])
         st.write(f"Logs with missing data: {missing_data}")
         st.write(f"Logs with unusual symptoms: {unusual_symptoms}")
-        save_dir = "recordings"
+        save_dir = "data/audio"
         os.makedirs(save_dir, exist_ok=True)
         file_path = f"{save_dir}/{st.session_state.user_profile.get('name', 'user')}_{timestamp}.wav"
         with open(file_path, "wb") as f:
