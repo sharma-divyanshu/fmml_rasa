@@ -173,15 +173,15 @@ class PeriodTracker:
             for log in logs
         ]
     
+    def record_voice_note(self) -> str:
+        """
+        Record a voice note using the system's default microphone.
+        Returns the path to the recorded audio file.
+        """
+        print("Recording... (Press 'x' to stop early)")
+        audio_file_path = record_audio_until_x(uuid.uuid4().hex + ".wav")
+        return audio_file_path
 
-def record_voice_note() -> str:
-    """
-    Record a voice note using the system's default microphone.
-    Returns the path to the recorded audio file.
-    """
-    print("Recording... (Press 'x' to stop early)")
-    audio_file_path = record_audio_until_x(uuid.uuid4().hex + ".wav")
-    return audio_file_path
 
 def main():
     """Main entry point for the period tracker CLI"""
@@ -202,7 +202,7 @@ def main():
             
             if choice == "1":
                 print("\nPreparing to record your voice note...")
-                audio_file = record_voice_note()
+                audio_file = tracker.record_voice_note()
                 
                 if not audio_file:
                     print("No audio was recorded. Please try again.")
