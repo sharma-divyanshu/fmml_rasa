@@ -6,7 +6,7 @@ import tempfile
 import subprocess
 
 from dotenv import load_dotenv
-from ..elevenlabs_transcriber import text_to_speech
+from ..elevenlabs_transcriber import ElevenLabsTranscriber
 from .text_processor import extract_period_info, format_period_summary
 from .data_store import PeriodDataStore
 
@@ -35,7 +35,7 @@ class VoiceConversationHandler:
     def _convert_text_to_speech(self, text: str) -> str:
         """Convert text to speech and save as MP3"""
         audio_path = self.audio_output_dir / f"question_{self.current_question}.mp3"
-        text_to_speech(text, str(audio_path))
+        ElevenLabsTranscriber().text_to_speech(text, str(audio_path))
         return str(audio_path)
 
     def _play_audio(self, audio_path: str) -> None:
