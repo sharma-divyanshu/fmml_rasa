@@ -4,11 +4,12 @@ from typing import Optional, Dict, Any
 import os
 import uuid
 from pathlib import Path
+import uvicorn
 
-from ..app import PeriodTracker
-from ..config.settings import config
-from ..utils.text_processor import extract_period_info
-from ..elevenlabs_transcriber import ElevenLabsTranscriber
+from period_tracker.app import PeriodTracker
+from period_tracker.config.settings import config
+from period_tracker.utils.text_processor import extract_period_info
+from period_tracker.elevenlabs_transcriber import ElevenLabsTranscriber
 
 # Create router
 router = APIRouter(prefix="/period-tracker")
@@ -69,8 +70,8 @@ async def root():
     """Root endpoint"""
     return {"message": "Period Tracker API is running"}
 
-@router.post("/process-audio")
-async def process_audio(
+# @router.post("/process-audio")
+def process_audio(
     file: str
 ):
     """Process an audio file containing voice input"""
@@ -118,21 +119,25 @@ async def process_audio(
             # Missing fields, generate follow-up question
             followup_question = generate_followup_question(missing_fields)
             
+            outpath = os.path.join(config.audio_output_dir, f"response_{uuid.uuid4()}.mp3")
             # Convert question to speech
             response_audio = transcriber.text_to_speech(
                 followup_question,
-                os.path.join(config.audio_output_dir, f"response_{uuid.uuid4()}.mp3")
+                outpath
             )
             
             return {
                 "status": "needs_more_info",
                 "message": followup_question,
-                "audio_url": f"/api/period-tracker/audio/{os.path.basename(response_audio)}",
+                "audio_url": outpath,
                 "missing_fields": missing_fields,
-                "session_id": session_id or ""
+                "session_id": session_id or "",
+                "conversation_history": period_tracker.conversation_handler.conversation_history
             }
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise e
 
-
+# if __name__ == "__main__":
+#     uvicorn.run(router, host="0.0.0.0", port=8000)
+    

@@ -1,9 +1,13 @@
 import streamlit as st
 import os
 from datetime import datetime as dt
+
+from streamlit.runtime.state import session_state
 from period_tracker.app import PeriodTracker
 from period_tracker.utils.audio_recorder import record_audio_until_x
 import tempfile
+from period_tracker.api.server import process_audio
+
 import uuid
 
 # Initialize period tracker
@@ -126,28 +130,25 @@ elif st.session_state.step == 10:
         record_audio_until_x(temp_file.name)
         
         # Process the voice note
-        result = period_tracker.process_voice_note(temp_file.name, st.session_state.session_id)
+        result = process_audio(temp_file.name)
         
-        if "error" in result:
-            st.error(result["error"])
-        else:
-            # Store the log
-            st.session_state.logs.append(result)
+        # Store the log
+        st.session_state.logs.append(result)
+        
+        # Show summary
+        st.success(result)
+        
+        # Show conversation history
+        st.subheader("Conversation History")
+        for msg in result["conversation_history"]:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            st.write(f"**{role}:** {msg["content"]}")
             
-            # Show summary
-            st.success(result["summary"])
-            
-            # Show conversation history
-            st.subheader("Conversation History")
-            for msg in result["conversation_history"]:
-                role = "User" if msg["role"] == "user" else "Assistant"
-                st.write(f"**{role}:** {msg["content"]}")
-                
-            # Show warnings if any
-            if result["has_missing_data"]:
-                st.warning("Some required information is missing. Please provide more details.")
-            if result["has_unusual_symptoms"]:
-                st.warning("Unusual symptoms detected. Please consider consulting a healthcare professional.")
+        # Show warnings if any
+        if result.get("missing_fields"):
+            st.warning("Some required information is missing. Please provide more details.")
+        if result.get("has_unusual_symptoms"):
+            st.warning("Unusual symptoms detected. Please consider consulting a healthcare professional.")
                 
     # End session button
     if st.button("End Session"):
@@ -159,18 +160,19 @@ elif st.session_state.step == 10:
     st.subheader("Session Statistics")
     if st.session_state.logs:
         st.write(f"Total logs: {len(st.session_state.logs)}")
-        missing_data = sum(1 for log in st.session_state.logs if log["has_missing_data"])
-        unusual_symptoms = sum(1 for log in st.session_state.logs if log["has_unusual_symptoms"])
+        missing_data = sum(1 for log in st.session_state.logs if log.get("missing_fields", []))
+        unusual_symptoms = sum(1 for log in st.session_state.logs if log.get("has_unusual_symptoms", []))
         st.write(f"Logs with missing data: {missing_data}")
         st.write(f"Logs with unusual symptoms: {unusual_symptoms}")
         save_dir = "data/audio"
         os.makedirs(save_dir, exist_ok=True)
-        file_path = f"{save_dir}/{st.session_state.user_profile.get('name', 'user')}_{timestamp}.wav"
-        with open(file_path, "wb") as f:
-            f.write(audio_bytes.getvalue())
+        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+        file_path = st.session_state.logs[-1]["audio_url"]
 
         st.success(f"Saved your voice as {file_path}")
-        st.audio(audio_bytes, format="audio/wav")
+        with open(file_path, "rb") as f:
+            audio_data = f.read()
+        st.audio(audio_data, format="audio/wav")
         st.info("Simulated AI Response Played (replace this with your backend output)")
 
     st.write("You can record again any time without reloading the page.")

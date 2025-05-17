@@ -70,7 +70,7 @@ class ElevenLabsTranscriber:
                 similarity_boost=1.0,
                 style=0.0,
                 use_speaker_boost=True,
-                speed=0.7,
+                speed=0.85,
             ),
         )
         with open(outpath, "wb") as f:

@@ -40,6 +40,7 @@ class AppConfig(BaseModel):
     voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Default voice ID (Rachel)
     model_id: str = "eleven_monolingual_v1"
     audio_output_dir: str = "data/audio"
+    audio_input_dir: str = "data/audio"
     
     # Text processing
     keywords: Dict[str, List[str]] = {
