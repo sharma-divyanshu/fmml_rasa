@@ -1,27 +1,48 @@
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
-from period_tracker.elevenlabs_transcriber import transcribe_audio_file, text_to_speech
-from period_tracker.models.database import SessionLocal, User, PeriodLog, get_db
+from period_tracker.elevenlabs_transcriber import ElevenLabsTranscriber
 from period_tracker.config.settings import config
+from period_tracker.utils.audio_recorder import record_audio_until_x
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
 from period_tracker.utils.voice_conversation_handler import VoiceConversationHandler
 
 class PeriodTracker:
     def __init__(self, user_id: str = "default_user"):
         self.user_id = user_id
-        self.db = SessionLocal()
-        self._ensure_user_exists()
-    
-    def _ensure_user_exists(self):
-        """Ensure the user exists in the database"""
-        user = self.db.query(User).filter(User.id == self.user_id).first()
-        if not user:
-            user = User(id=self.user_id)
-            self.db.add(user)
-            self.db.commit()
+
+    def generate_voice_response(self, text: str) -> Dict[str, Any]:
+        """
+        Generate a voice response using ElevenLabs API.
+        
+        Args:
+            text: The text to convert to speech.
+            
+        Returns:
+            Dict containing the generated audio file path and metadata.
+            
+        Raises:
+            requests.exceptions.RequestException: If the API request fails.
+            ValueError: If the API response doesn't contain the expected data.
+        """
+        try:
+            output_file_name = uuid.uuid4().hex + ".wav"
+            ElevenLabsTranscriber().text_to_speech(
+                text=text,
+                output_path=os.path.join(config.audio_output_dir, output_file_name),
+                voice_id=config.voice_id,
+                model_id=config.model_id,
+                stability=config.stability,
+                similarity_boost=config.similarity_boost
+            )
+            return {
+                "audio_file_path": os.path.join(config.audio_output_dir, output_file_name),
+                "text": text
+            }
+        except Exception as e:
+            return {"error": f"Failed to generate voice response: {str(e)}"}
     
     def process_voice_note(self, audio_file_path: str) -> Dict[str, Any]:
         """
@@ -35,54 +56,42 @@ class PeriodTracker:
         """
         # Transcribe the audio
         try:
-            transcribed_text = transcribe_audio_file(audio_file_path)
+            transcribed_text = ElevenLabsTranscriber().transcribe_audio(audio_file_path)
         except Exception as e:
             return {"error": f"Failed to transcribe audio: {str(e)}"}
         
-        # Initialize conversation handler
-        conversation_handler = VoiceConversationHandler()
+        # Extract period information
+        period_info = extract_period_info(transcribed_text)
         
-        # Process conversation to gather complete information
-        try:
-            # Start with initial transcribed text
-            complete_info = conversation_handler.process_conversation(transcribed_text)
-            
-            # Save to database
-            log_id = str(uuid.uuid4())
-            audio_filename = f"{log_id}.wav"
-            audio_path = os.path.join(config.audio_output_dir, audio_filename)
-            
-            # Move the audio file to the designated directory
-            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-            os.rename(audio_file_path, audio_path)
-            
-            # Create log entry
-            log_entry = PeriodLog(
-                id=log_id,
-                user_id=self.user_id,
-                date=datetime.utcnow(),
-                flow=complete_info.get("period", {}).get("flow"),
-                spotting=complete_info.get("spotting", False),
-                mood=complete_info.get("mood", []),
-                symptoms=complete_info.get("symptoms", []),
-                notes=complete_info.get("notes"),
-                voice_note_path=audio_path,
-                transcribed_text=transcribed_text,
-                conversation_history=conversation_handler.conversation_history  # Store conversation history
-            )
-            
-            self.db.add(log_entry)
-            self.db.commit()
-            
-            return {
-                "log_id": log_id,
-                "transcribed_text": transcribed_text,
-                "complete_info": complete_info,
-                "summary": conversation_handler.format_summary(complete_info)
-            }
-            
-        except Exception as e:
-            return {"error": f"Failed to process conversation: {str(e)}"}
+        # Save to database
+        log_id = str(uuid.uuid4())
+        audio_filename = f"{log_id}.wav"
+        audio_path = os.path.join(config.audio_output_dir, audio_filename)
+        
+        # Move the audio file to the designated directory
+        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+        os.rename(audio_file_path, audio_path)
+        
+        # Create log entry
+        log_entry = PeriodLog(
+            id=log_id,
+            user_id=self.user_id,
+            date=datetime.utcnow(),
+            flow=period_info.get("flow"),
+            spotting=period_info.get("spotting", False),
+            mood=period_info.get("mood", []),
+            symptoms=period_info.get("symptoms", []),
+            notes=period_info.get("notes"),
+            voice_note_path=audio_path,
+            transcribed_text=transcribed_text
+        )
+        
+        return {
+            "log_id": log_id,
+            "transcribed_text": transcribed_text,
+            "period_info": period_info,
+            "summary": format_period_summary(period_info)
+        }
     
     def get_recent_logs(self, limit: int = 5) -> list:
         """Get recent period logs for the user"""
@@ -120,34 +129,9 @@ def record_voice_note() -> str:
     Record a voice note using the system's default microphone.
     Returns the path to the recorded audio file.
     """
-    import sounddevice as sd
-    from scipy.io.wavfile import write
-    import tempfile
-    
-    # Audio recording parameters
-    fs = 44100  # Sample rate
-    seconds = 10  # Maximum recording duration
-    
-    print("Recording... (Press Ctrl+C to stop early)")
-    try:
-        # Record audio
-        recording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
-        sd.wait()  # Wait until recording is finished
-        
-        # Save to temporary file
-        temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        write(temp_file.name, fs, recording)  # Save as WAV file
-        
-        print(f"Recording saved to {temp_file.name}")
-        return temp_file.name
-        
-    except KeyboardInterrupt:
-        print("\nRecording stopped by user")
-        temp_file.close()
-        return ""
-    except Exception as e:
-        print(f"Error during recording: {e}")
-        return ""
+    print("Recording... (Press 'x' to stop early)")
+    audio_file_path = record_audio_until_x(uuid.uuid4().hex + ".wav")
+    return audio_file_path
 
 def main():
     """Main entry point for the period tracker CLI"""
@@ -199,6 +183,10 @@ def main():
             elif choice == "3":
                 print("Thank you for using Period Tracker!")
                 break
+
+            elif choice == "4":
+                print("\nPlaying your voice note...")
+                result = tracker.generate_voice_response()
             
             else:
                 print("Invalid choice. Please try again.")
