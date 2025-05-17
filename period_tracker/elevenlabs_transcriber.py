@@ -3,6 +3,8 @@ from typing import Optional, Union
 import requests
 from pathlib import Path
 from elevenlabs.client import ElevenLabs
+from elevenlabs import VoiceSettings
+
 import io
 
 # load api key from .env file
@@ -36,11 +38,9 @@ class ElevenLabsTranscriber:
     def text_to_speech(
         self,
         text: str,
-        output_path: str,
+        outpath: str,
         voice_id: str = "21m00Tcm4TlvDq8ikWAM",  # Default voice ID (Rachel)
         model_id: str = "eleven_monolingual_v1",
-        stability: float = 0.5,
-        similarity_boost: float = 0.75
     ) -> str:
         """
         Convert text to speech and save as an audio file using ElevenLabs API.
@@ -60,25 +60,24 @@ class ElevenLabsTranscriber:
             requests.exceptions.RequestException: If the API request fails.
             ValueError: If the API response is not successful.
         """
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        
-        # Ensure output directory exists
-        output_path = os.path.abspath(output_path)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
         audio = self.client.text_to_speech.convert(
             text=text,
             voice_id=voice_id,
             model_id=model_id,
-            stability=stability,
-            similarity_boost=similarity_boost
+            output_format="mp3_44100_128",
+            voice_settings=VoiceSettings(
+                stability=0.0,
+                similarity_boost=1.0,
+                style=0.0,
+                use_speaker_boost=True,
+                speed=0.7,
+            ),
         )
-        
-        # Save the audio file
-        with open(output_path, 'wb') as f:
-            f.write(audio)
-        
-        return output_path
+        with open(outpath, "wb") as f:
+            for chunk in audio:
+                f.write(chunk)
+        print("Auto generated audio saved at: ", outpath)
+        return audio
 
     def transcribe_audio(
         self,

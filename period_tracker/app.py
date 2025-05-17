@@ -9,6 +9,7 @@ from period_tracker.utils.audio_recorder import record_audio_until_x
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
 from period_tracker.utils.voice_conversation_handler import VoiceConversationHandler
 from period_tracker.utils.data_store import PeriodDataStore
+from elevenlabs import play
 
 class PeriodTracker:
     def __init__(self):
@@ -66,18 +67,16 @@ class PeriodTracker:
             ValueError: If the API response doesn't contain the expected data.
         """
         try:
-            output_file_name = uuid.uuid4().hex + ".wav"
-            ElevenLabsTranscriber().text_to_speech(
+            output_file_name = uuid.uuid4().hex + ".mp3"
+            outpath = os.path.join(config.audio_output_dir, output_file_name)
+            audio_gen = ElevenLabsTranscriber().text_to_speech(
                 text=text,
-                output_path=os.path.join(config.audio_output_dir, output_file_name),
-                voice_id=config.voice_id,
-                model_id=config.model_id,
-                stability=config.stability,
-                similarity_boost=config.similarity_boost
+                outpath=outpath
             )
             return {
-                "audio_file_path": os.path.join(config.audio_output_dir, output_file_name),
-                "text": text
+                "audio_file_path": outpath,
+                "text": text,
+                "audio": audio_gen
             }
         except Exception as e:
             return {"error": f"Failed to generate voice response: {str(e)}"}
@@ -174,9 +173,6 @@ class PeriodTracker:
             for log in logs
         ]
     
-    def close(self):
-        """Close the database connection"""
-        self.db.close()
 
 def record_voice_note() -> str:
     """
@@ -200,8 +196,9 @@ def main():
             print("1. Record a new voice note")
             print("2. View recent logs")
             print("3. Exit")
+            print("4. Generate voice response")
             
-            choice = input("Enter your choice (1-3): ").strip()
+            choice = input("Enter your choice (1-4): ").strip()
             
             if choice == "1":
                 print("\nPreparing to record your voice note...")
@@ -239,16 +236,18 @@ def main():
                 break
 
             elif choice == "4":
-                print("\nPlaying your voice note...")
-                result = tracker.generate_voice_response()
+                result = tracker.generate_voice_response("Hello, how are you?")
+                if "error" in result:
+                    print(f"Error: {result['error']}")
+                else:
+                    print("\nPlaying voice note...")
+                    play(result['audio'])
             
             else:
                 print("Invalid choice. Please try again.")
     
     except KeyboardInterrupt:
         print("\nExiting...")
-    finally:
-        tracker.close()
-
+    
 if __name__ == "__main__":
     main()
