@@ -81,107 +81,18 @@ class PeriodTracker:
         except Exception as e:
             return {"error": f"Failed to generate voice response: {str(e)}"}
     
-    def process_voice_note(self, audio_file_path: str, session_id: str = None) -> Dict[str, Any]:
-        """
-        Process a voice note using conversation flow to gather complete health information
-        
-        Args:
-            audio_file_path: Path to the audio file
-            session_id: Optional session ID to use for this interaction
-            
-        Returns:
-            Dict containing the extracted information and metadata
-        """
-        # Check if we have an active session
-        if not session_id and not self.current_session_id:
-            return {"error": "No active session. Please start a new session first."}
-            
-        # Use provided session ID or current session
-        if session_id:
-            self.current_session_id = session_id
-            
-        # Transcribe the audio
-        try:
-            transcribed_text = ElevenLabsTranscriber().transcribe_audio(audio_file_path)
-        except Exception as e:
-            return {"error": f"Failed to transcribe audio: {str(e)}"}
-        
-        # Process conversation to gather complete information
-        try:
-            complete_info = self.conversation_handler.process_conversation(transcribed_text)
-        except Exception as e:
-            return {"error": f"Failed to process conversation: {str(e)}"}
-        
-        # Save to database
-        log_id = str(uuid.uuid4())
-        audio_filename = f"{log_id}.wav"
-        audio_path = os.path.join(config.audio_output_dir, audio_filename)
-        
-        # Move the audio file to the designated directory
-        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-        os.rename(audio_file_path, audio_path)
-        
-        # Add log to session history
-        self.data_store.add_log_to_history(complete_info)
-        
-        # Get session data
-        session_data = self.data_store.get_session_data(self.current_session_id)
-        
-        return {
-            "log_id": log_id,
-            "session_id": self.current_session_id,
-            "transcribed_text": transcribed_text,
-            "complete_info": complete_info,
-            "summary": format_period_summary(complete_info),
-            "conversation_history": self.conversation_handler.conversation_history,
-            "session_status": session_data["status"],
-            "has_missing_data": session_data["has_missing_data"],
-            "has_unusual_symptoms": session_data["has_unusual_symptoms"]
-        }
-        
-        return {
-            "log_id": log_id,
-            "transcribed_text": transcribed_text,
-            "period_info": period_info,
-            "summary": format_period_summary(period_info)
-        }
+    def process_voice_note(self, audio_file_path: str) -> Dict[str, Any]:
+        return ElevenLabsTranscriber().transcribe_audio(audio_file_path)
     
-    def get_recent_logs(self, limit: int = 5) -> list:
-        """Get recent period logs for the user"""
-        logs = self.db.query(PeriodLog)\
-            .filter(PeriodLog.user_id == self.user_id)\
-            .order_by(PeriodLog.date.desc())\
-            .limit(limit)\
-            .all()
-        
-        return [
-            {
-                "date": log.date.isoformat(),
-                "flow": log.flow,
-                "spotting": log.spotting,
-                "mood": log.mood,
-                "symptoms": log.symptoms,
-                "notes": log.notes,
-                "summary": format_period_summary({
-                    "flow": log.flow,
-                    "spotting": log.spotting,
-                    "mood": log.mood,
-                    "symptoms": log.symptoms,
-                    "notes": log.notes
-                })
-            }
-            for log in logs
-        ]
-    
-    def record_voice_note(self) -> str:
+
+    def transcribe_voice_note(self) -> str:
         """
         Record a voice note using the system's default microphone.
         Returns the path to the recorded audio file.
         """
         print("Recording... (Press 'x' to stop early)")
         audio_file_path = record_audio_until_x(uuid.uuid4().hex + ".wav")
-        return audio_file_path
-
+        return self.process_voice_note(audio_file_path)
 
 def main():
     """Main entry point for the period tracker CLI"""
@@ -194,29 +105,21 @@ def main():
         while True:
             print("\nOptions:")
             print("1. Record a new voice note")
-            print("2. View recent logs")
-            print("3. Exit")
-            print("4. Generate voice response")
+            print("2. Exit")
+            print("3. Generate voice response")
             
-            choice = input("Enter your choice (1-4): ").strip()
+            choice = input("Enter your choice (1-3): ").strip()
             
             if choice == "1":
-                print("\nPreparing to record your voice note...")
-                audio_file = tracker.record_voice_note()
-                
-                if not audio_file:
-                    print("No audio was recorded. Please try again.")
-                    continue
-                
-                print("\nProcessing your voice note...")
-                result = tracker.process_voice_note(audio_file)
+                print("\nPreparing to record your voice note...")                
+                result = tracker.transcribe_voice_note()
                 
                 if "error" in result:
                     print(f"Error: {result['error']}")
                 else:
                     print("\nSuccessfully logged your entry!")
                     print("\nSummary:")
-                    print(result["summary"])
+                    print(result)
             
             elif choice == "2":
                 print("\nYour Recent Logs:")
@@ -231,11 +134,11 @@ def main():
                     print("-" * 30)
                     print(log['summary'])
             
-            elif choice == "3":
+            elif choice == "2":
                 print("Thank you for using Period Tracker!")
                 break
 
-            elif choice == "4":
+            elif choice == "3":
                 result = tracker.generate_voice_response("Hello, how are you?")
                 if "error" in result:
                     print(f"Error: {result['error']}")
