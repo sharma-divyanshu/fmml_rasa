@@ -1,11 +1,12 @@
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
-from period_tracker.elevenlabs_transcriber import transcribe_audio_file, text_to_speech
-from period_tracker.models.database import SessionLocal, User, PeriodLog, get_db
+from period_tracker.elevenlabs_transcriber import ElevenLabsTranscriber
+from period_tracker.models.database import SessionLocal, User, PeriodLog
 from period_tracker.config.settings import config
+from period_tracker.utils.audio_recorder import record_audio_until_x
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
 
 class PeriodTracker:
@@ -34,7 +35,7 @@ class PeriodTracker:
         """
         # Transcribe the audio
         try:
-            transcribed_text = transcribe_audio_file(audio_file_path)
+            transcribed_text = ElevenLabsTranscriber().transcribe_audio(audio_file_path)
         except Exception as e:
             return {"error": f"Failed to transcribe audio: {str(e)}"}
         
@@ -110,34 +111,9 @@ def record_voice_note() -> str:
     Record a voice note using the system's default microphone.
     Returns the path to the recorded audio file.
     """
-    import sounddevice as sd
-    from scipy.io.wavfile import write
-    import tempfile
-    
-    # Audio recording parameters
-    fs = 44100  # Sample rate
-    seconds = 10  # Maximum recording duration
-    
-    print("Recording... (Press Ctrl+C to stop early)")
-    try:
-        # Record audio
-        recording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
-        sd.wait()  # Wait until recording is finished
-        
-        # Save to temporary file
-        temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        write(temp_file.name, fs, recording)  # Save as WAV file
-        
-        print(f"Recording saved to {temp_file.name}")
-        return temp_file.name
-        
-    except KeyboardInterrupt:
-        print("\nRecording stopped by user")
-        temp_file.close()
-        return ""
-    except Exception as e:
-        print(f"Error during recording: {e}")
-        return ""
+    print("Recording... (Press 'x' to stop early)")
+    audio_file_path = record_audio_until_x(uuid.uuid4().hex + ".wav")
+    return audio_file_path
 
 def main():
     """Main entry point for the period tracker CLI"""
@@ -189,6 +165,10 @@ def main():
             elif choice == "3":
                 print("Thank you for using Period Tracker!")
                 break
+
+            elif choice == "4":
+                print("\nPlaying your voice note...")
+                result = tracker.generate_voice_response()
             
             else:
                 print("Invalid choice. Please try again.")
