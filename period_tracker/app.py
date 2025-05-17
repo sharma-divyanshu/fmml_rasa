@@ -7,6 +7,7 @@ from period_tracker.elevenlabs_transcriber import transcribe_audio_file, text_to
 from period_tracker.models.database import SessionLocal, User, PeriodLog, get_db
 from period_tracker.config.settings import config
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
+from period_tracker.utils.voice_conversation_handler import VoiceConversationHandler
 
 class PeriodTracker:
     def __init__(self, user_id: str = "default_user"):
@@ -24,7 +25,7 @@ class PeriodTracker:
     
     def process_voice_note(self, audio_file_path: str) -> Dict[str, Any]:
         """
-        Process a voice note and extract period information
+        Process a voice note using conversation flow to gather complete health information
         
         Args:
             audio_file_path: Path to the audio file
@@ -38,41 +39,50 @@ class PeriodTracker:
         except Exception as e:
             return {"error": f"Failed to transcribe audio: {str(e)}"}
         
-        # Extract period information
-        period_info = extract_period_info(transcribed_text)
+        # Initialize conversation handler
+        conversation_handler = VoiceConversationHandler()
         
-        # Save to database
-        log_id = str(uuid.uuid4())
-        audio_filename = f"{log_id}.wav"
-        audio_path = os.path.join(config.audio_output_dir, audio_filename)
-        
-        # Move the audio file to the designated directory
-        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-        os.rename(audio_file_path, audio_path)
-        
-        # Create log entry
-        log_entry = PeriodLog(
-            id=log_id,
-            user_id=self.user_id,
-            date=datetime.utcnow(),
-            flow=period_info.get("flow"),
-            spotting=period_info.get("spotting", False),
-            mood=period_info.get("mood", []),
-            symptoms=period_info.get("symptoms", []),
-            notes=period_info.get("notes"),
-            voice_note_path=audio_path,
-            transcribed_text=transcribed_text
-        )
-        
-        self.db.add(log_entry)
-        self.db.commit()
-        
-        return {
-            "log_id": log_id,
-            "transcribed_text": transcribed_text,
-            "period_info": period_info,
-            "summary": format_period_summary(period_info)
-        }
+        # Process conversation to gather complete information
+        try:
+            # Start with initial transcribed text
+            complete_info = conversation_handler.process_conversation(transcribed_text)
+            
+            # Save to database
+            log_id = str(uuid.uuid4())
+            audio_filename = f"{log_id}.wav"
+            audio_path = os.path.join(config.audio_output_dir, audio_filename)
+            
+            # Move the audio file to the designated directory
+            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+            os.rename(audio_file_path, audio_path)
+            
+            # Create log entry
+            log_entry = PeriodLog(
+                id=log_id,
+                user_id=self.user_id,
+                date=datetime.utcnow(),
+                flow=complete_info.get("period", {}).get("flow"),
+                spotting=complete_info.get("spotting", False),
+                mood=complete_info.get("mood", []),
+                symptoms=complete_info.get("symptoms", []),
+                notes=complete_info.get("notes"),
+                voice_note_path=audio_path,
+                transcribed_text=transcribed_text,
+                conversation_history=conversation_handler.conversation_history  # Store conversation history
+            )
+            
+            self.db.add(log_entry)
+            self.db.commit()
+            
+            return {
+                "log_id": log_id,
+                "transcribed_text": transcribed_text,
+                "complete_info": complete_info,
+                "summary": conversation_handler.format_summary(complete_info)
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to process conversation: {str(e)}"}
     
     def get_recent_logs(self, limit: int = 5) -> list:
         """Get recent period logs for the user"""

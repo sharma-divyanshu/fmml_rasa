@@ -1,2 +1,15 @@
-.env
+# Python Bytecode
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+.env
+.venv/
+
+# Logs & Temporary Files
+logs/
+*.log
+temp_*
+debug.log
