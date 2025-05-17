@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Dict, Any
 
 from period_tracker.elevenlabs_transcriber import ElevenLabsTranscriber
-from period_tracker.models.database import SessionLocal, User, PeriodLog
 from period_tracker.config.settings import config
 from period_tracker.utils.audio_recorder import record_audio_until_x
 from period_tracker.utils.text_processor import extract_period_info, format_period_summary
@@ -12,16 +11,37 @@ from period_tracker.utils.text_processor import extract_period_info, format_peri
 class PeriodTracker:
     def __init__(self, user_id: str = "default_user"):
         self.user_id = user_id
-        self.db = SessionLocal()
-        self._ensure_user_exists()
-    
-    def _ensure_user_exists(self):
-        """Ensure the user exists in the database"""
-        user = self.db.query(User).filter(User.id == self.user_id).first()
-        if not user:
-            user = User(id=self.user_id)
-            self.db.add(user)
-            self.db.commit()
+
+    def generate_voice_response(self, text: str) -> Dict[str, Any]:
+        """
+        Generate a voice response using ElevenLabs API.
+        
+        Args:
+            text: The text to convert to speech.
+            
+        Returns:
+            Dict containing the generated audio file path and metadata.
+            
+        Raises:
+            requests.exceptions.RequestException: If the API request fails.
+            ValueError: If the API response doesn't contain the expected data.
+        """
+        try:
+            output_file_name = uuid.uuid4().hex + ".wav"
+            ElevenLabsTranscriber().text_to_speech(
+                text=text,
+                output_path=os.path.join(config.audio_output_dir, output_file_name),
+                voice_id=config.voice_id,
+                model_id=config.model_id,
+                stability=config.stability,
+                similarity_boost=config.similarity_boost
+            )
+            return {
+                "audio_file_path": os.path.join(config.audio_output_dir, output_file_name),
+                "text": text
+            }
+        except Exception as e:
+            return {"error": f"Failed to generate voice response: {str(e)}"}
     
     def process_voice_note(self, audio_file_path: str) -> Dict[str, Any]:
         """
@@ -64,9 +84,6 @@ class PeriodTracker:
             voice_note_path=audio_path,
             transcribed_text=transcribed_text
         )
-        
-        self.db.add(log_entry)
-        self.db.commit()
         
         return {
             "log_id": log_id,
